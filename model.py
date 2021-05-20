@@ -5,54 +5,86 @@ Created on Mon May 17 22:40:38 2021
 @author: user
 """
 
-import torch
 import torch.nn as nn
 
 class CharRNN(nn.Module):
-    def __init__(self, hidden_cell_num, window_size, number_of_character):
+    def __init__(self, input_size, hidden_size=128, num_layer=2):
         super(CharRNN, self).__init__()
-        self.hidden_cell_num = hidden_cell_num
-        self.rnn1 = nn.RNNCell(window_size, self.hidden_cell_num)
-        self.rnn2 = nn.RNNCell(self.hidden_cell_num, self.hidden_cell_num)
-        self.linear = nn.Lineaer(self.hidden_cell_num, number_of_character)
         
+        # Use torh.nn.RNN
+        # there is torch.nn.RNNCell but do not use this method
+        # Check the below document if you want to know difference between RNN and RNNCell in pytorch
+        # https://forum.onefourthlabs.com/t/difference-between-rnn-and-rnncell-in-pytorch/7643
+        # RNN support multiple stacked layer but RNNCell does not
+        # RNN needs several arguments
+        # 1. input size : in this case, size of unique character number 59
+        # 2. hidden size : hyperparameter, I set this 128
+        # 3. bias
+        # 4. num_layers
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layer = num_layer
         
-    def forward(self, dataset):
+        self.rnn = nn.RNN(input_size=self.input_size, hidden_size=self.hidden_size, bias=True, num_layers=self.num_layer, dropout=0.5)
+        self.linear = nn.Linear(self.hidden_size, self.input_size)
 
-        batch_size = 128
-        h_t, c_t, h_t2, c_t2 = self.init_hidden(batch_size)
-        
-        for data in dataset :
-            h_t, c_t = self.rnn1(data, (h_t, c_t))
-            h_t2, c_t2 = self.rnn2(h_t, h_t2, c_t2)
-            output = self.linear(h_t2)
+           
+    def forward(self, input, hidden):
+
+        x, hidden = self.rnn(input, hidden)
+        x = x.view(x.size(0)*x.size(1), self.hidden_size)
+        output = self.linear(x)
             
-        return output
-
+        return output, hidden
+    
+    
     def init_hidden(self, batch_size):
+        # there are 4 weight parameters in RNN 
+        # input weight parameter W_x : size = (hidden_size, input_size)
+        # hidden weight parameter W_h : size = (hidden_size, hidden_size)
+        # bias input-hidden : size = (hidden)
+        # bias hidden-hidden : size=(hidden)
+        
+        weight = next(self.parameters()).data
+        hidden_state = weight.new(self.num_layer, batch_size, self.hidden_size).zero_()
+        
+        return hidden_state
 
-        h_t = torch.zeros(input.size(batch_size, self.hidden_cell_num, dtyepe=torch.float))
-        c_t = torch.zeros(input.size(batch_size, self.hidden_cell_num, dtyepe=torch.float))
-        h_t2 = torch.zeros(input.size(batch_size, self.hidden_cell_num, dtyepe=torch.float))
-        c_t2 = torch.zeros(input.size(batch_size, self.hidden_cell_num, dtyepe=torch.float))
-		
-        return h_t, c_t, h_t2, c_t2
 
-"""
+
+
 class CharLSTM(nn.Module):
-    def __init__(self):
+    def __init__(self, input_size, hidden_size, num_layer):
+        super(CharLSTM, self).__init__()
+        
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layer = num_layer
+        
+        self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, bias=True, num_layers=self.num_layer, dropout=0.5)
+        self.linear = nn.Linear(self.hidden_size, self.input_size)
 
-        # write your codes here
 
     def forward(self, input, hidden):
 
-        # write your codes here
+        x, (hidden_state, cell_state) = self.rnn(input, hidden)
+        x = x.view(x.size(0)*x.size(1), self.hidden_size)
+        output = self.linear(x)
+            
+        return output, (hidden_state, cell_state)
 
-        return output, hidden
 
-		def init_hidden(self, batch_size):
-
-				# write your codes here
-
-				return initial_hidden
-"""
+    def init_hidden(self, batch_size):
+        # there are 4 weight parameters in RNN 
+        # input weight parameter W_x : size = (hidden_size, input_size)
+        # hidden weight parameter W_h : size = (hidden_size, hidden_size)
+        # bias input-hidden : size = (hidden)
+        # bias hidden-hidden : size=(hidden)
+        
+        # LSTM needs hidden state and cell state 
+        
+        weight = next(self.parameters()).data
+        hidden_state = weight.new(self.num_layer, batch_size, self.hidden_size).zero_()
+        cell_state = weight.new(self.num_layer, batch_size, self.hidden_size).zero_()
+        
+        return (hidden_state, cell_state)

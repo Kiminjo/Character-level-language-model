@@ -33,10 +33,12 @@ def train(model, trn_loader, device, criterion, optimizer):
     trn_loss = 0
     
     for batch_idx, batch in enumerate(trn_loader) :
-        seq, label = batch
-        seq = seq.to(device); label = label.to(device)
+        x, label = batch
+        
+        # input sequence x should be form of one hot vector 
+        x = x.to(device); label = label.to(device)
         optimizer.zero_grad()
-        output = model(seq)
+        output = model(x)
         cost = criterion(output, label)
         cost.backward()
         optimizer.step()
@@ -91,7 +93,8 @@ def main():
     
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = CharRNN(hidden_cell_num=batch_size, window_size=30, number_of_character=len(train_dataset.character_dict)).to(device)
+    model = CharRNN(input_size=len(train_dataset.character_dict), 
+                    hidden_size=128, num_layer=2).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     criterion = torch.nn.CrossEntropyLoss().to(device)
     
