@@ -2,10 +2,9 @@
 """
 Created on Mon May 17 22:39:52 2021
 
-@author: user
+@author: Kiminjo
 """
 
-import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
@@ -30,7 +29,7 @@ class Shakespeare(Dataset):
         # get integer mapped sequence data and integer-character dictionary using 'integer_encoding' function
         # use capital and punctuation in this work. 
         # More detail, read this document 
-        # 
+        # https://www.researchgate.net/publication/319185593_Experiments_in_Character-Level_Neural_Network_Models_for_Punctuation
         self.sequence_length = 30
         self.encoded, self.char_dict = integer_encoding(input_file)
         self.input, self.target = generate_mini_batch(self.encoded, self.sequence_length)
