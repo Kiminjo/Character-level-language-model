@@ -31,16 +31,16 @@ class Shakespeare(Dataset):
         # More detail, read this document 
         # https://www.researchgate.net/publication/319185593_Experiments_in_Character-Level_Neural_Network_Models_for_Punctuation
         self.sequence_length = 30
-        self.encoded, self.char_dict = integer_encoding(input_file)
+        self.encoded, self.int2char, self.char2int = integer_encoding(input_file)
         self.input, self.target = generate_mini_batch(self.encoded, self.sequence_length)
 
                
         if is_train == True : 
-            self.input = self.input[: int(self.input.size(0) * 0.9)]
-            self.target = self.target[: int(self.target.size(0) * 0.9)]
+            self.input = remove_some_data(self.input[: int(self.input.size(0) * 0.9)])
+            self.target = remove_some_data(self.target[: int(self.target.size(0) * 0.9)])
         else :
-            self.input = self.input[int(self.input.size(0) * 0.9) : ]
-            self.target = self.target[int(self.target.size(0) * 0.9) : ]
+            self.input = remove_some_data(self.input[int(self.input.size(0) * 0.9) : ], is_train=False)
+            self.target = remove_some_data(self.target[int(self.target.size(0) * 0.9) : ], is_train=False)
         
 
     def __len__(self):
@@ -69,11 +69,12 @@ def integer_encoding(input_text) :
     
     # normally, dictionary is {index : character} it has to be made in order
     # But in this task, we should maps character to indecies so it changes the key and value of the dictionary after making them into {character : index}
-    character_dict = {char : idx for idx, char in enumerate(characters)}
-    encoded_text = list(map(character_dict.get, text_file, text_file))
-    character_dict = dict((idx, char) for char, idx in character_dict.items())
+    char2int = {char : idx for idx, char in enumerate(characters)}
+    encoded_text = list(map(char2int.get, text_file, text_file))
+    encoded_text = encoded_text
+    int2char = dict((idx, char) for char, idx in char2int.items())
     
-    return encoded_text, character_dict
+    return encoded_text, int2char, char2int
     
 
 
@@ -89,9 +90,40 @@ def generate_mini_batch(data, sequence_length) :
             row_x.reverse(); row_y = row_x.copy()
             row_y.pop(0); row_y.append(data[index+1])
             input.append(row_x); target.append(row_y)
+    
             
     return torch.tensor(input, dtype=torch.float), torch.tensor(target, dtype=torch.float)
     
+
+def one_hot_encoding(input_data) :
+    # input dimension is 2-dimensional matrix
+    # but RNN got 3 dimensional tensor as input 
+    # so change the 2 dimension matrix to three dimensional tensor using one hot encoding
+    dict_size = 59
+    output = []
+
+    
+    for row in input_data.split(1) :
+        row = row[0]
+        row_to_matrix = []
+        for x in row :
+            one_hot_vector = torch.eye(dict_size, dtype=torch.float)[int(x)]
+            one_hot_vector = one_hot_vector.tolist()
+            row_to_matrix.append(one_hot_vector)
+        
+        output.append(row_to_matrix)
+    output = torch.tensor(output)
+    return output
+
+
+def remove_some_data(x, is_train=True) :
+    if is_train==True :
+        remove_data = 38
+    else :
+        remove_data = 27
+    x = x[:-remove_data]
+    return x
+
 
 if __name__ == '__main__':
 
@@ -99,5 +131,8 @@ if __name__ == '__main__':
     train_dataset = Shakespeare(input_file, is_train=True)
     test_dataset = Shakespeare(input_file, is_train=False)
     
-    train = DataLoader(train_dataset, batch_size=128)
+    train_data = DataLoader(train_dataset, batch_size=100)
+    test_data = DataLoader(test_dataset, batch_size=100)
+    print(len(train_dataset))
+    print(len(train_data))
     
