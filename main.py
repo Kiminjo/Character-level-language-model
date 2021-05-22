@@ -2,18 +2,18 @@
 """
 Created on Mon May 17 22:40:56 2021
 
-@author: user
+@author: Kiminjo
 """
 
 import torch
 from torch.utils.data import DataLoader
-from dataset import Shakespeare
-from model import CharRNN
+from dataset import Shakespeare, one_hot_encoding
+from model import CharRNN, CharLSTM
+from generate import generate
+import warnings 
+warnings.filterwarnings(action='ignore')
 
-# import some packages you need here
-
-
-def train(model, trn_loader, device, criterion, optimizer):
+def train(model, trn_loader, device, criterion, optimizer, batch_size, network_type):
     """ Train function
 
     Args:
@@ -32,26 +32,33 @@ def train(model, trn_loader, device, criterion, optimizer):
     total_batch = len(trn_loader)
     trn_loss = 0
     
+    hidden = model.init_hidden(batch_size)
+    
     for batch_idx, batch in enumerate(trn_loader) :
         x, label = batch
-        
+
         # input sequence x should be form of one hot vector 
+        x = one_hot_encoding(x)
         x = x.to(device); label = label.to(device)
+        if network_type=='RNN' :
+            hidden = tuple([each.data for each in hidden])[0].reshape(1, -1, 512)
+        else :
+            hidden = tuple([each.data for each in hidden])
         optimizer.zero_grad()
-        output = model(x)
-        cost = criterion(output, label)
-        cost.backward()
+        output, hidden = model.forward(x, hidden)
+        cost = criterion(output, label.view(3000).long())
+        cost.backward(retain_graph=True)
         optimizer.step()
         
-        trn_loss += cost.itme()
+        trn_loss += cost.item()
         
     trn_loss = round(trn_loss/total_batch, 3) 
-    
 
     return trn_loss
 
 
-def validate(model, val_loader, device, criterion):
+@torch.no_grad()
+def validate(model, val_loader, device, criterion, batch_size, network_type='RNN'):
     """ Validate function
 
     Args:
@@ -64,7 +71,29 @@ def validate(model, val_loader, device, criterion):
         val_loss: average loss value
     """
 
-    # write your codes here
+    model.eval()
+    
+    total_batch = len(val_loader)
+    val_loss = 0
+    
+    hidden = model.init_hidden(batch_size)
+    
+    for batch_idx, batch in enumerate(val_loader) :
+        x, label = batch
+
+        # input sequence x should be form of one hot vector 
+        x = one_hot_encoding(x)
+        x = x.to(device); label = label.to(device)
+        if network_type=='RNN' :
+            hidden = tuple([each.data for each in hidden])[0].reshape(1, -1, 512)
+        else :
+            hidden = tuple([each.data for each in hidden])
+        output, hidden = model.forward(x, hidden)
+        cost = criterion(output, label.view(3000).long())
+        
+        val_loss += cost.item()
+
+    val_loss = round(val_loss/total_batch, 3) 
 
     return val_loss
 
@@ -82,28 +111,59 @@ def main():
     """
     
     input_file = open('data/shakespeare_train.txt', 'r').read()
-    epochs = 10
-    batch_size = 128
+    epochs = 3
+    batch_size = 100
     
     train_dataset = Shakespeare(input_file, is_train=True)
     test_dataset = Shakespeare(input_file, is_train=False)
     
-    train = DataLoader(train_dataset, batch_size=batch_size)
-    test = DataLoader(test_dataset, batch_size=batch_size)
+    train_data = DataLoader(train_dataset, batch_size=batch_size)
+    test_data = DataLoader(test_dataset, batch_size=batch_size)
     
-    
+    ##################################################################
+    #                   LSTM model
+    ##################################################################
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = CharRNN(input_size=len(train_dataset.character_dict), 
-                    hidden_size=128, num_layer=2).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-    criterion = torch.nn.CrossEntropyLoss().to(device)
+    lstm_model = CharLSTM(input_size=len(train_dataset.char2int), 
+                    hidden_size=512, num_layer=1).to(device)
+    lstm_optimizer = torch.optim.Adam(lstm_model.parameters(), lr=0.01)
+    lstm_criterion = torch.nn.CrossEntropyLoss().to(device)
     
+    lstm_trn_loss = []; lstm_val_loss = []
     for epoch in range(epochs) :
-        train_loss = train(model, train, device, criterion, optimizer)
+        train_loss = train(lstm_model, train_data, device, lstm_criterion, lstm_optimizer, batch_size, 'LSTM')
+        test_loss = validate(lstm_model, test_data, device, lstm_criterion, batch_size, 'LSTM')
+        print('epoch : {}, train loss : {}, validation loss : {}'.format(epoch+1, train_loss, test_loss))
+        
+        lstm_trn_loss.append(train_loss); lstm_val_loss.append(test_loss)
         
     
+    
+    ##################################################################
+    #                   RNN model
+    ##################################################################
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    rnn_model = CharRNN(input_size=len(train_dataset.char2int), 
+                    hidden_size=512, num_layer=1).to(device)
+    rnn_optimizer = torch.optim.Adam(rnn_model.parameters(), lr=0.01)
+    rnn_criterion = torch.nn.CrossEntropyLoss().to(device)
+    
+    rnn_trn_loss = []; rnn_val_loss = []
+    for epoch in range(epochs) :
+        train_loss = train(rnn_model, train_data, device, rnn_criterion, rnn_optimizer, batch_size, 'RNN')
+        test_loss = validate(rnn_model, test_data, device, rnn_criterion, batch_size, 'RNN')
+        print('epoch : {}, train loss : {}, validation loss : {}'.format(epoch+1, train_loss, test_loss))
+        
+        rnn_trn_loss.append(train_loss); rnn_val_loss.append(test_loss)
+        
+    
+    lstm_generated_text = generate(lstm_model, 'The', 5, 'LSTM', train_dataset.char2int, train_dataset.int2char)
+    #rnn_generated_text = 
+        
 
-    # write your codes here
+    return lstm_trn_loss, lstm_val_loss, lstm_generated_text
+
+
 
 if __name__ == '__main__':
-    main()
+    train_loss, val_loss, generated_text = main()
